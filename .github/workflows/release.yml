@@ -5,7 +5,6 @@ permissions:
 
 on:
   push:
-    branches: [develop]
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -42,7 +41,7 @@ jobs:
     name: Publish to TestPyPI
     runs-on: ubuntu-latest
     needs: [build]
-    if: github.ref == 'refs/heads/develop'
+    if: github.event_name == 'workflow_dispatch'
     environment: testpypi
     permissions:
       id-token: write
@@ -75,6 +74,19 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Tag '$TAG' is not strict semver (expected vX.Y.Z)."
+            exit 1
+          fi
+
+      - name: Ensure tag commit belongs to main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tagged commit is on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"; then
+            echo "Tag commit is not contained in origin/main. Releasing from non-main is blocked."
             exit 1
           fi
 
