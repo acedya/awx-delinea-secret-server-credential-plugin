@@ -10,7 +10,6 @@ from credential_plugins.delinea_secret_server import (
     TOKEN_ENDPOINT,
 )
 
-
 FAKE_SERVER = "https://myserver.example.com/SecretServer"
 FAKE_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.fakepayload.fakesig"
 

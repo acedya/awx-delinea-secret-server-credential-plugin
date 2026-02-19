@@ -12,7 +12,6 @@ from typing import Any, Dict, Optional
 
 import requests
 
-
 # ── Input field definition (what the user fills in on the credential form) ──
 INPUTS = {
     "fields": [
