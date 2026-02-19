@@ -6,9 +6,11 @@ import pytest
 import responses
 
 from credential_plugins.delinea_secret_server import (
+    INJECTORS,
     TOKEN_ENDPOINT,
     _get_access_token,
     backend,
+    delinea_secret_server,
 )
 
 FAKE_SERVER = "https://myserver.example.com/SecretServer"
@@ -26,7 +28,7 @@ def test_get_access_token_success():
     )
 
     token = _get_access_token(
-        server_url=FAKE_SERVER,
+        base_url=FAKE_SERVER,
         username="appuser",
         password="s3cret",
         domain="MYDOMAIN",
@@ -51,7 +53,7 @@ def test_get_access_token_without_domain():
     )
 
     _get_access_token(
-        server_url=FAKE_SERVER,
+        base_url=FAKE_SERVER,
         username="appuser",
         password="s3cret",
     )
@@ -72,7 +74,7 @@ def test_get_access_token_http_error():
 
     with pytest.raises(Exception):
         _get_access_token(
-            server_url=FAKE_SERVER,
+            base_url=FAKE_SERVER,
             username="wrong",
             password="wrong",
         )
@@ -90,7 +92,7 @@ def test_get_access_token_missing_key():
 
     with pytest.raises(KeyError, match="access_token"):
         _get_access_token(
-            server_url=FAKE_SERVER,
+            base_url=FAKE_SERVER,
             username="appuser",
             password="s3cret",
         )
@@ -108,7 +110,7 @@ def test_backend_returns_token_and_url():
 
     result = backend(
         {
-            "server_url": FAKE_SERVER,
+            "base_url": FAKE_SERVER,
             "username": "appuser",
             "password": "s3cret",
             "domain": "CORP",
@@ -117,7 +119,7 @@ def test_backend_returns_token_and_url():
 
     assert result == {
         "tss_token": FAKE_TOKEN,
-        "tss_server_url": FAKE_SERVER,
+        "tss_base_url": FAKE_SERVER,
     }
 
 
@@ -133,7 +135,7 @@ def test_backend_password_not_in_output():
 
     result = backend(
         {
-            "server_url": FAKE_SERVER,
+            "base_url": FAKE_SERVER,
             "username": "appuser",
             "password": "s3cret",
         }
@@ -141,3 +143,26 @@ def test_backend_password_not_in_output():
 
     output_str = json.dumps(result)
     assert "s3cret" not in output_str
+
+
+def test_injectors_define_env_and_extra_vars():
+    """INJECTORS must expose tss_token and tss_base_url as env vars and extra vars."""
+    assert "env" in INJECTORS
+    assert "extra_vars" in INJECTORS
+    assert "TSS_TOKEN" in INJECTORS["env"]
+    assert "TSS_BASE_URL" in INJECTORS["env"]
+    assert "tss_token" in INJECTORS["extra_vars"]
+    assert "tss_base_url" in INJECTORS["extra_vars"]
+
+
+def test_credential_plugin_has_injectors():
+    """The CredentialPlugin namedtuple must include injectors for AWX registration."""
+    assert hasattr(delinea_secret_server, "injectors")
+    assert delinea_secret_server.injectors is not None
+    assert delinea_secret_server.injectors == INJECTORS
+
+
+def test_injectors_never_reference_password():
+    """The raw password must never appear in injector definitions."""
+    injector_str = json.dumps(INJECTORS)
+    assert "password" not in injector_str

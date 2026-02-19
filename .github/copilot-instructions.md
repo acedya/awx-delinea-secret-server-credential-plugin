@@ -12,15 +12,15 @@ This is an **AWX/AAP managed credential plugin** for Delinea (Thycotic) Secret S
 ## Architecture
 
 The plugin is a single Python module (`credential_plugins/delinea_secret_server.py`) that:
-1. Receives credential fields from AWX (server_url, username, password, domain)
-2. POSTs to `{server_url}/oauth2/token` to get an OAuth2 access token
-3. Returns `tss_token` and `tss_server_url` which AWX injects as env vars and extra vars
+1. Receives credential fields from AWX (base_url, username, password, domain)
+2. POSTs to `{base_url}/oauth2/token` to get an OAuth2 access token
+3. Returns `tss_token` and `tss_base_url` which AWX injects as env vars and extra vars
 4. The raw password is **never** returned or injected
 
 Key objects:
 - `INPUTS` dict: defines the AWX credential input form schema
-- `INJECTORS` dict: defines what gets injected into the job runtime
-- `CredentialPlugin` namedtuple: the entry point AWX discovers
+- `INJECTORS` dict: defines what gets injected into the job runtime (env vars + extra vars)
+- `CredentialPlugin` namedtuple: the entry point AWX discovers (name, inputs, injectors, backend)
 - `_get_access_token()`: internal function handling the OAuth2 POST
 - `backend()`: entry point called by AWX at job launch
 

@@ -16,7 +16,7 @@ import requests
 INPUTS = {
     "fields": [
         {
-            "id": "server_url",
+            "id": "base_url",
             "label": "Secret Server URL",
             "help_text": (
                 "The Base URL of Secret Server e.g. "
@@ -45,15 +45,27 @@ INPUTS = {
             "secret": True,
         },
     ],
-    "required": ["server_url", "username", "password"],
+    "required": ["base_url", "username", "password"],
 }
 
-# ── Token endpoint path (appended to server_url) ──
+# ── Token endpoint path (appended to base_url) ──
 TOKEN_ENDPOINT = "/oauth2/token"
+
+# ── Injector definition (what gets injected into the Ansible job runtime) ──
+INJECTORS = {
+    "env": {
+        "TSS_TOKEN": "{{tss_token}}",
+        "TSS_BASE_URL": "{{tss_base_url}}",
+    },
+    "extra_vars": {
+        "tss_token": "{{tss_token}}",
+        "tss_base_url": "{{tss_base_url}}",
+    },
+}
 
 
 def _get_access_token(
-    server_url: str,
+    base_url: str,
     username: str,
     password: str,
     domain: Optional[str] = None,
@@ -67,7 +79,7 @@ def _get_access_token(
         requests.HTTPError: if the token request fails.
         KeyError: if the response does not contain an access_token.
     """
-    token_url = server_url.rstrip("/") + TOKEN_ENDPOINT
+    token_url = base_url.rstrip("/") + TOKEN_ENDPOINT
 
     payload: Dict[str, str] = {
         "grant_type": "password",
@@ -106,20 +118,20 @@ def backend(credential_params: Dict[str, Any]) -> Dict[str, str]:
     Parameters
     ----------
     credential_params : dict
-        The saved credential fields (server_url, username, password, domain).
+        The saved credential fields (base_url, username, password, domain).
 
     Returns
     -------
     dict
         A flat dict whose keys will be injected as environment variables.
     """
-    server_url: str = credential_params["server_url"]
+    base_url: str = credential_params["base_url"]
     username: str = credential_params["username"]
     password: str = credential_params["password"]
     domain: Optional[str] = credential_params.get("domain")
 
     token = _get_access_token(
-        server_url=server_url,
+        base_url=base_url,
         username=username,
         password=password,
         domain=domain,
@@ -129,16 +141,19 @@ def backend(credential_params: Dict[str, Any]) -> Dict[str, str]:
     # The raw password is NEVER exposed to the job.
     return {
         "tss_token": token,
-        "tss_server_url": server_url,
+        "tss_base_url": base_url,
     }
 
 
 # ── AWX Credential Plugin Definition ──────────────────────────────────────
 # This namedtuple is discovered and registered by AWX via entry points.
-CredentialPlugin = collections.namedtuple("CredentialPlugin", ["name", "inputs", "backend"])
+CredentialPlugin = collections.namedtuple(
+    "CredentialPlugin", ["name", "inputs", "injectors", "backend"]
+)
 
 delinea_secret_server = CredentialPlugin(
     name="Delinea Secret Server",
     inputs=INPUTS,
+    injectors=INJECTORS,
     backend=backend,
 )

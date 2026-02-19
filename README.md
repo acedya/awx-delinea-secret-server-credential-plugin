@@ -152,7 +152,7 @@ The Makefile is the **single source of truth** — CI workflows call `make` targ
 
 | Field | Type | Required | Secret | Description |
 |-------|------|----------|--------|-------------|
-| `server_url` | string | Yes | No | Base URL (e.g. `https://myserver/SecretServer`) |
+| `base_url` | string | Yes | No | Base URL (e.g. `https://myserver/SecretServer`) |
 | `username` | string | Yes | No | Application user name |
 | `password` | string | Yes | Yes | Password (encrypted at rest by AAP) |
 | `domain` | string | No | No | Application user domain |
@@ -163,23 +163,23 @@ The plugin injects **only** the OAuth2 token and server URL — never the raw pa
 
 | Type | Variable | Value |
 |------|----------|-------|
-| Environment | `TSS_SERVER_URL` | Secret Server URL |
+| Environment | `TSS_BASE_URL` | Secret Server base URL |
 | Environment | `TSS_TOKEN` | OAuth2 access token |
-| Extra var | `tss_server_url` | Secret Server URL |
+| Extra var | `tss_base_url` | Secret Server base URL |
 | Extra var | `tss_token` | OAuth2 access token |
 
 ### Implementation
 
-- **`_get_access_token(server_url, username, password, domain, verify_ssl)`**
-  POSTs to `{server_url}/oauth2/token` with `grant_type=password`. Returns the `access_token` string. Raises `requests.HTTPError` on failure, `KeyError` if token missing.
+- **`_get_access_token(base_url, username, password, domain, verify_ssl)`**
+  POSTs to `{base_url}/oauth2/token` with `grant_type=password`. Returns the `access_token` string. Raises `requests.HTTPError` on failure, `KeyError` if token missing.
 
 - **`backend(credential_params)`**
-  AWX entry point called at job launch. Calls `_get_access_token()`, returns `{"tss_token": ..., "tss_server_url": ...}`.
+  AWX entry point called at job launch. Calls `_get_access_token()`, returns `{"tss_token": ..., "tss_base_url": ...}`.
 
 ### OAuth2 Token Flow
 
 ```http
-POST {server_url}/oauth2/token
+POST {base_url}/oauth2/token
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=password&username={username}&password={password}&domain={domain}
@@ -316,7 +316,7 @@ Server-side guard: `release.yml` verifies the tagged commit is an ancestor of `o
    awx-manage setup_managed_credential_types
    ```
 
-3. **Create a Credential** using the *Delinea Secret Server* type — fill in `server_url`, `username`, `password`, and optionally `domain`
+3. **Create a Credential** using the *Delinea Secret Server* type — fill in `base_url`, `username`, `password`, and optionally `domain`
 
 4. **Attach to a Job Template** — the token is injected at launch time as env vars and extra vars
 
@@ -331,7 +331,7 @@ Server-side guard: `release.yml` verifies the tagged commit is an ancestor of `o
   ansible.builtin.debug:
     msg: >-
       {{ lookup('delinea.ss.tss', 42,
-                server_url=tss_server_url,
+                base_url=tss_base_url,
                 token=tss_token) }}
 ```
 
@@ -341,7 +341,7 @@ Server-side guard: `release.yml` verifies the tagged commit is an ancestor of `o
 - name: Use environment variables
   ansible.builtin.debug:
     msg: >-
-      Server: {{ lookup('env', 'TSS_SERVER_URL') }}
+      Server: {{ lookup('env', 'TSS_BASE_URL') }}
       Token:  {{ lookup('env', 'TSS_TOKEN') }}
 ```
 
