@@ -306,9 +306,46 @@ Server-side guard: `release.yml` verifies the tagged commit is an ancestor of `o
 
 ## Deployment to AAP/AWX
 
-1. **Install the plugin** on AWX/AAP nodes (or build a custom Execution Environment)
+### Containerised AAP (single-node / podman)
+
+The plugin must be installed inside **both** controller containers (`automation-controller-web` and `automation-controller-task`).
+
+**Install from GitHub (quickest):**
+
+```bash
+podman exec -it automation-controller-web awx-python -m pip install git+https://github.com/acedya/tss-credential-plugin.git
+podman exec -it automation-controller-task awx-python -m pip install git+https://github.com/acedya/tss-credential-plugin.git
+podman exec -it automation-controller-web awx-manage setup_managed_credential_types
+```
+
+**Install from a local wheel:**
+
+```bash
+# Build on your dev machine
+make build
+
+# Copy the wheel to the AAP host
+scp dist/awx_delinea_secret_server_credential_plugin-*.whl admin@<aap-host>:/tmp/
+
+# Copy into the containers
+podman cp /tmp/awx_delinea_secret_server_credential_plugin-*.whl automation-controller-web:/tmp/
+podman cp /tmp/awx_delinea_secret_server_credential_plugin-*.whl automation-controller-task:/tmp/
+
+# Install
+podman exec -it automation-controller-web awx-python -m pip install /tmp/awx_delinea_secret_server_credential_plugin-*.whl
+podman exec -it automation-controller-task awx-python -m pip install /tmp/awx_delinea_secret_server_credential_plugin-*.whl
+
+# Register
+podman exec -it automation-controller-web awx-manage setup_managed_credential_types
+```
+
+> **Note:** `pip install` inside containers is ephemeral — reinstall after container restarts, or build a custom controller image for persistence.
+
+### Standard (non-containerised) install
+
+1. **Install the plugin**
    ```bash
-   pip install awx-delinea-secret-server-credential-plugin
+   awx-python -m pip install awx-delinea-secret-server-credential-plugin
    ```
 
 2. **Register credential types**
@@ -316,9 +353,11 @@ Server-side guard: `release.yml` verifies the tagged commit is an ancestor of `o
    awx-manage setup_managed_credential_types
    ```
 
-3. **Create a Credential** using the *Delinea Secret Server* type — fill in `base_url`, `username`, `password`, and optionally `domain`
+### After installation
 
-4. **Attach to a Job Template** — the token is injected at launch time as env vars and extra vars
+1. **Create a Credential** using the *Delinea Secret Server* type — fill in `base_url`, `username`, `password`, and optionally `domain`
+
+2. **Attach to a Job Template** — the token is injected at launch time as env vars and extra vars
 
 ---
 

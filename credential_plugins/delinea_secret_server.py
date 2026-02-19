@@ -46,6 +46,19 @@ INPUTS = {
         },
     ],
     "required": ["base_url", "username", "password"],
+    "metadata": [
+        {
+            "id": "tss_token",
+            "label": "OAuth2 Token",
+            "type": "string",
+            "secret": True,
+        },
+        {
+            "id": "tss_base_url",
+            "label": "Secret Server Base URL",
+            "type": "string",
+        },
+    ],
 }
 
 # ── Token endpoint path (appended to base_url) ──

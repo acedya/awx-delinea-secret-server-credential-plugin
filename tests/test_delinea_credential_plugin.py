@@ -7,6 +7,7 @@ import responses
 
 from credential_plugins.delinea_secret_server import (
     INJECTORS,
+    INPUTS,
     TOKEN_ENDPOINT,
     _get_access_token,
     backend,
@@ -166,3 +167,12 @@ def test_injectors_never_reference_password():
     """The raw password must never appear in injector definitions."""
     injector_str = json.dumps(INJECTORS)
     assert "password" not in injector_str
+
+
+def test_inputs_metadata_matches_backend_keys():
+    """INPUTS metadata IDs must match the keys returned by backend()."""
+    metadata = INPUTS.get("metadata")
+    assert metadata is not None, "INPUTS must include a 'metadata' array"
+    metadata_ids = {m["id"] for m in metadata}
+    assert "tss_token" in metadata_ids
+    assert "tss_base_url" in metadata_ids
