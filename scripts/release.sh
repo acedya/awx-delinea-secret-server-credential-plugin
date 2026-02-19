@@ -52,6 +52,12 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 1
 fi
 
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+if [[ "$CURRENT_BRANCH" != "main" ]]; then
+  echo "Error: releases must be tagged from 'main' (current branch: $CURRENT_BRANCH)"
+  exit 1
+fi
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "Error: working tree is not clean. Commit/stash changes before tagging."
   exit 1

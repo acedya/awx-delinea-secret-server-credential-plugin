@@ -78,6 +78,19 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure tag commit belongs to main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tagged commit is on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"; then
+            echo "Tag commit is not contained in origin/main. Releasing from non-main is blocked."
+            exit 1
+          fi
+
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
         with:
