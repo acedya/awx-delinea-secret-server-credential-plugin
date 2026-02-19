@@ -137,7 +137,7 @@ The Makefile is the **single source of truth** — CI workflows call `make` targ
 │   └── release.sh                     # Safe tag helper
 ├── .github/workflows/
 │   ├── ci.yml                         # Test / lint / build
-│   └── release.yml                    # TestPyPI / PyPI / GitHub Release
+│   └── release.yml                    # PyPI publish / GitHub Release
 ├── pyproject.toml                     # Package metadata + tool config
 ├── Makefile                           # Single source of truth for CI
 ├── CHANGELOG.md                       # Release notes
@@ -237,24 +237,22 @@ make lint             # lint checks only
 | Workflow | Trigger | Jobs |
 |----------|---------|------|
 | `ci.yml` | Push to `main`, pull requests | Test (matrix: 3.10, 3.11), Lint, Build |
-| `release.yml` | Tag `v*.*.*`, manual dispatch | PyPI + GitHub Release (tags), TestPyPI (manual) |
+| `release.yml` | Tag `v*.*.*` | PyPI publish + GitHub Release |
 
 ### Trusted Publishing Setup
 
 This repository uses **PyPI OIDC Trusted Publishing** — no API token secrets required.
 
-Create two trusted publisher configurations on [pypi.org](https://pypi.org) and [test.pypi.org](https://test.pypi.org):
+Create a trusted publisher configuration on [pypi.org](https://pypi.org):
 
 | Setting | Value |
 |---------|-------|
 | Owner | Your GitHub org/user |
 | Repository | `tss-credential-plugin` |
 | Workflow | `release.yml` |
-| Environment | `pypi` (production) / `testpypi` (staging) |
+| Environment | `pypi` |
 
-**Publish triggers:**
-- **PyPI + GitHub Release**: strict `vX.Y.Z` tags, only if the tagged commit is on `main`
-- **TestPyPI**: manual workflow dispatch (for pre-release validation)
+**Publish trigger:** strict `vX.Y.Z` tags, only if the tagged commit is on `main`.
 
 Release notes are populated from `CHANGELOG.md`.
 
@@ -263,7 +261,6 @@ Release notes are populated from `CHANGELOG.md`.
 Token-based publishing is available for emergencies:
 
 ```bash
-make publish-testpypi-token TEST_PYPI_API_TOKEN=pypi-...
 make publish-pypi-token PYPI_API_TOKEN=pypi-...
 ```
 
@@ -374,7 +371,6 @@ Apply these in GitHub UI: **Settings → Rules → Rulesets**.
 | Environment | Configuration |
 |-------------|---------------|
 | `pypi` | Required reviewers (recommended), limit to protected branches/tags |
-| `testpypi` | Optional reviewers for staging control |
 
 ---
 

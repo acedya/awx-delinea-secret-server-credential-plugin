@@ -16,7 +16,7 @@ RELEASE_SCRIPT := scripts/release.sh
 SRC_DIR       := credential_plugins
 TEST_DIR      := tests
 
-.PHONY: help init venv install install-dev format lint test test-ci test-verbose test-only build release-check publish-testpypi-token publish-pypi-token release-tag ci clean
+.PHONY: help init venv install install-dev format lint test test-ci test-verbose test-only build release-check publish-pypi-token release-tag ci clean
 
 # ── Default target ────────────────────────────────────────────
 help: ## Show this help message
@@ -80,10 +80,6 @@ build: install-dev ## Build source and wheel distributions
 
 release-check: build ## Verify built artifacts are valid for publishing
 	$(TWINE) check dist/*
-
-publish-testpypi-token: release-check ## Publish with token-based auth (local/manual fallback)
-	@if [ -z "$(TEST_PYPI_API_TOKEN)" ]; then echo "TEST_PYPI_API_TOKEN is required"; exit 1; fi
-	$(TWINE) upload --repository-url https://test.pypi.org/legacy/ -u __token__ -p $(TEST_PYPI_API_TOKEN) --skip-existing dist/*
 
 publish-pypi-token: release-check ## Publish with token-based auth (local/manual fallback)
 	@if [ -z "$(PYPI_API_TOKEN)" ]; then echo "PYPI_API_TOKEN is required"; exit 1; fi
