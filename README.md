@@ -6,7 +6,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/awx-delinea-secret-server-credential-plugin)](https://pypi.org/project/awx-delinea-secret-server-credential-plugin/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/awx-delinea-secret-server-credential-plugin)](https://pypi.org/project/awx-delinea-secret-server-credential-plugin/)
 [![Coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)](tests/)
-[![License](https://img.shields.io/pypi/l/awx-delinea-secret-server-credential-plugin)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 
