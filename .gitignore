@@ -39,3 +39,4 @@ htmlcov/
 
 # Project-local generated folder (accidental nested copy)
 tss-credential-plugin/
+commands

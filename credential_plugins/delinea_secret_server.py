@@ -1,25 +1,36 @@
 """
 Custom Credential Plugin for Delinea (Thycotic) Secret Server.
 
-This plugin authenticates against Secret Server's OAuth2 endpoint,
-retrieves an access token, and injects it into the job runtime
-as environment variables and extra vars for use with the
-delinea.ss.tss Ansible lookup plugin.
+This plugin authenticates against Secret Server using the official Delinea
+Python SDK (python-tss-sdk), retrieves a short-lived OAuth2 access token,
+and returns the requested value (token or base_url) to AWX through
+credential linking.
+
+AWX calls backend(**kwargs) with all fields + metadata values as keyword
+arguments.  The ``identifier`` metadata dropdown tells the plugin which
+value to return.
 """
 
 import collections
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-import requests
+from delinea.secrets.server import (
+    DomainPasswordGrantAuthorizer,
+    PasswordGrantAuthorizer,
+)
 
 # ── Input field definition (what the user fills in on the credential form) ──
+#
+# fields:    set once when the user creates a Delinea credential in AWX
+# metadata:  set each time the user *links* a target credential field
+#   - identifier dropdown selects the value to return ("token" or "base_url")
 INPUTS = {
     "fields": [
         {
             "id": "base_url",
             "label": "Secret Server URL",
             "help_text": (
-                "The Base URL of Secret Server e.g. "
+                "The base URL of Secret Server, e.g. "
                 "https://myserver/SecretServer or "
                 "https://mytenant.secretservercloud.com"
             ),
@@ -28,13 +39,13 @@ INPUTS = {
         {
             "id": "username",
             "label": "Username",
-            "help_text": "The (Application) user username",
+            "help_text": "The (application) user username",
             "type": "string",
         },
         {
             "id": "domain",
             "label": "Domain",
-            "help_text": "The (Application) user domain (optional)",
+            "help_text": "The (application) user domain (optional)",
             "type": "string",
         },
         {
@@ -45,128 +56,77 @@ INPUTS = {
             "secret": True,
         },
     ],
-    "required": ["base_url", "username", "password"],
     "metadata": [
         {
-            "id": "tss_token",
-            "label": "OAuth2 Token",
+            "id": "identifier",
+            "label": "Output value",
             "type": "string",
-            "secret": True,
-        },
-        {
-            "id": "tss_base_url",
-            "label": "Secret Server Base URL",
-            "type": "string",
+            "choices": ["token", "base_url"],
+            "default": "token",
+            "help_text": (
+                "Select which value to return: " "the OAuth2 token or the Secret Server base URL."
+            ),
         },
     ],
-}
-
-# ── Token endpoint path (appended to base_url) ──
-TOKEN_ENDPOINT = "/oauth2/token"
-
-# ── Injector definition (what gets injected into the Ansible job runtime) ──
-INJECTORS = {
-    "env": {
-        "TSS_TOKEN": "{{tss_token}}",
-        "TSS_BASE_URL": "{{tss_base_url}}",
-    },
-    "extra_vars": {
-        "tss_token": "{{tss_token}}",
-        "tss_base_url": "{{tss_base_url}}",
-    },
+    "required": ["base_url", "username", "password", "identifier"],
 }
 
 
-def _get_access_token(
+def _get_authorizer(
     base_url: str,
     username: str,
     password: str,
     domain: Optional[str] = None,
-    verify_ssl: bool = True,
-) -> str:
-    """
-    Authenticate against Delinea Secret Server and return an OAuth2 access
-    token.
+):
+    """Create and return an authenticated Delinea SDK authorizer.
 
-    Raises:
-        requests.HTTPError: if the token request fails.
-        KeyError: if the response does not contain an access_token.
+    Uses ``DomainPasswordGrantAuthorizer`` when *domain* is provided,
+    otherwise ``PasswordGrantAuthorizer``.
     """
-    token_url = base_url.rstrip("/") + TOKEN_ENDPOINT
-
-    payload: Dict[str, str] = {
-        "grant_type": "password",
-        "username": username,
-        "password": password,
-    }
     if domain:
-        payload["domain"] = domain
-
-    response = requests.post(
-        token_url,
-        data=payload,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        verify=verify_ssl,
-    )
-    response.raise_for_status()
-
-    data = response.json()
-    if "access_token" not in data:
-        raise KeyError(
-            f"Secret Server token response did not contain 'access_token'. "
-            f"Response keys: {list(data.keys())}"
-        )
-
-    token = data["access_token"]
-    if not isinstance(token, str):
-        raise TypeError("Secret Server token response 'access_token' must be a string")
-
-    return token
+        return DomainPasswordGrantAuthorizer(base_url, username, domain, password)
+    return PasswordGrantAuthorizer(base_url, username, password)
 
 
-def backend(credential_params: Dict[str, Any]) -> Dict[str, str]:
+def backend(**kwargs: Any) -> str:
     """
-    Called by AWX / AAP to resolve credential values at job launch time.
+    Called by AWX / AAP to resolve a credential value at job launch time.
 
-    Parameters
-    ----------
-    credential_params : dict
-        The saved credential fields (base_url, username, password, domain).
+    AWX passes all ``fields`` and ``metadata`` values as keyword arguments.
+    The ``identifier`` kwarg (a dropdown defaulting to "token") selects
+    which value to return:
+
+    - ``token``    → OAuth2 access token (authenticates via the SDK)
+    - ``base_url`` → the Secret Server base URL (pass-through)
 
     Returns
     -------
-    dict
-        A flat dict whose keys will be injected as environment variables.
+    str
+        A single credential value.
     """
-    base_url: str = credential_params["base_url"]
-    username: str = credential_params["username"]
-    password: str = credential_params["password"]
-    domain: Optional[str] = credential_params.get("domain")
+    base_url: str = kwargs["base_url"]
+    username: str = kwargs["username"]
+    password: str = kwargs["password"]
+    domain: Optional[str] = kwargs.get("domain")
+    identifier: str = kwargs.get("identifier", "token")
 
-    token = _get_access_token(
-        base_url=base_url,
-        username=username,
-        password=password,
-        domain=domain,
-    )
+    if identifier == "base_url":
+        return base_url
 
-    # Return the token — this is the value injected into env / extra_vars.
-    # The raw password is NEVER exposed to the job.
-    return {
-        "tss_token": token,
-        "tss_base_url": base_url,
-    }
+    if identifier == "token":
+        authorizer = _get_authorizer(base_url, username, password, domain)
+        token: str = authorizer.token
+        return token
+
+    raise ValueError(f"Unknown identifier '{identifier}'. " f"Valid values: 'token', 'base_url'.")
 
 
 # ── AWX Credential Plugin Definition ──────────────────────────────────────
 # This namedtuple is discovered and registered by AWX via entry points.
-CredentialPlugin = collections.namedtuple(
-    "CredentialPlugin", ["name", "inputs", "injectors", "backend"]
-)
+CredentialPlugin = collections.namedtuple("CredentialPlugin", ["name", "inputs", "backend"])
 
 delinea_secret_server = CredentialPlugin(
     name="Delinea Secret Server",
     inputs=INPUTS,
-    injectors=INJECTORS,
     backend=backend,
 )

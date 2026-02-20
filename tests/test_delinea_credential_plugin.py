@@ -1,15 +1,12 @@
 """Unit tests for the Delinea Secret Server credential plugin."""
 
-import json
+from unittest.mock import MagicMock, patch
 
 import pytest
-import responses
 
 from credential_plugins.delinea_secret_server import (
-    INJECTORS,
     INPUTS,
-    TOKEN_ENDPOINT,
-    _get_access_token,
+    _get_authorizer,
     backend,
     delinea_secret_server,
 )
@@ -18,161 +15,202 @@ FAKE_SERVER = "https://myserver.example.com/SecretServer"
 FAKE_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.fakepayload.fakesig"
 
 
-@responses.activate
-def test_get_access_token_success():
-    """Token is returned on a successful OAuth2 call."""
-    responses.add(
-        responses.POST,
-        FAKE_SERVER + TOKEN_ENDPOINT,
-        json={"access_token": FAKE_TOKEN, "token_type": "bearer", "expires_in": 1200},
-        status=200,
-    )
+# ── _get_authorizer tests ───────────────────────────────────────────────
 
-    token = _get_access_token(
+
+@patch("credential_plugins.delinea_secret_server.PasswordGrantAuthorizer")
+def test_get_authorizer_without_domain(mock_cls):
+    """Uses PasswordGrantAuthorizer when domain is not provided."""
+    _get_authorizer(FAKE_SERVER, "appuser", "s3cret")
+    mock_cls.assert_called_once_with(FAKE_SERVER, "appuser", "s3cret")
+
+
+@patch("credential_plugins.delinea_secret_server.DomainPasswordGrantAuthorizer")
+def test_get_authorizer_with_domain(mock_cls):
+    """Uses DomainPasswordGrantAuthorizer when domain is provided."""
+    _get_authorizer(FAKE_SERVER, "appuser", "s3cret", domain="MYDOMAIN")
+    mock_cls.assert_called_once_with(FAKE_SERVER, "appuser", "MYDOMAIN", "s3cret")
+
+
+# ── backend() tests ─────────────────────────────────────────────────────
+
+
+@patch("credential_plugins.delinea_secret_server.PasswordGrantAuthorizer")
+def test_backend_returns_token(mock_cls):
+    """backend() returns the OAuth2 token when identifier is 'token'."""
+    mock_cls.return_value = MagicMock(token=FAKE_TOKEN)
+
+    result = backend(
         base_url=FAKE_SERVER,
         username="appuser",
         password="s3cret",
-        domain="MYDOMAIN",
-    )
-    assert token == FAKE_TOKEN
-
-    # Verify the POST body
-    body = responses.calls[0].request.body
-    assert "grant_type=password" in body
-    assert "username=appuser" in body
-    assert "domain=MYDOMAIN" in body
-
-
-@responses.activate
-def test_get_access_token_without_domain():
-    """Domain is optional and should not appear in the request if absent."""
-    responses.add(
-        responses.POST,
-        FAKE_SERVER + TOKEN_ENDPOINT,
-        json={"access_token": FAKE_TOKEN},
-        status=200,
+        identifier="token",
     )
 
-    _get_access_token(
+    assert result == FAKE_TOKEN
+    assert isinstance(result, str)
+
+
+@patch("credential_plugins.delinea_secret_server.PasswordGrantAuthorizer")
+def test_backend_defaults_to_token(mock_cls):
+    """backend() defaults to 'token' when identifier is not specified."""
+    mock_cls.return_value = MagicMock(token=FAKE_TOKEN)
+
+    result = backend(
         base_url=FAKE_SERVER,
         username="appuser",
         password="s3cret",
     )
 
-    body = responses.calls[0].request.body
-    assert "domain" not in body
+    assert result == FAKE_TOKEN
 
 
-@responses.activate
-def test_get_access_token_http_error():
-    """HTTPError is raised on non-2xx responses."""
-    responses.add(
-        responses.POST,
-        FAKE_SERVER + TOKEN_ENDPOINT,
-        json={"error": "invalid_grant"},
-        status=400,
+@patch("credential_plugins.delinea_secret_server.DomainPasswordGrantAuthorizer")
+def test_backend_token_with_domain(mock_cls):
+    """backend() uses DomainPasswordGrantAuthorizer when domain is provided."""
+    mock_cls.return_value = MagicMock(token=FAKE_TOKEN)
+
+    result = backend(
+        base_url=FAKE_SERVER,
+        username="appuser",
+        password="s3cret",
+        domain="CORP",
+        identifier="token",
     )
 
-    with pytest.raises(Exception):
-        _get_access_token(
-            base_url=FAKE_SERVER,
-            username="wrong",
-            password="wrong",
-        )
+    assert result == FAKE_TOKEN
+    mock_cls.assert_called_once_with(FAKE_SERVER, "appuser", "CORP", "s3cret")
 
 
-@responses.activate
-def test_get_access_token_missing_key():
-    """KeyError is raised when access_token is missing from the response."""
-    responses.add(
-        responses.POST,
-        FAKE_SERVER + TOKEN_ENDPOINT,
-        json={"token_type": "bearer"},
-        status=200,
+def test_backend_returns_base_url():
+    """backend() returns the base_url when identifier is 'base_url'."""
+    result = backend(
+        base_url=FAKE_SERVER,
+        username="appuser",
+        password="s3cret",
+        identifier="base_url",
     )
 
-    with pytest.raises(KeyError, match="access_token"):
-        _get_access_token(
+    assert result == FAKE_SERVER
+    assert isinstance(result, str)
+
+
+def test_backend_raises_on_unknown_identifier():
+    """backend() raises ValueError for an unrecognised identifier."""
+    with pytest.raises(ValueError, match="Unknown identifier"):
+        backend(
             base_url=FAKE_SERVER,
             username="appuser",
             password="s3cret",
+            identifier="unknown_key",
         )
 
 
-@responses.activate
-def test_backend_returns_token_and_url():
-    """The backend() function returns the expected dict for AWX injection."""
-    responses.add(
-        responses.POST,
-        FAKE_SERVER + TOKEN_ENDPOINT,
-        json={"access_token": FAKE_TOKEN},
-        status=200,
-    )
-
-    result = backend(
-        {
-            "base_url": FAKE_SERVER,
-            "username": "appuser",
-            "password": "s3cret",
-            "domain": "CORP",
-        }
-    )
-
-    assert result == {
-        "tss_token": FAKE_TOKEN,
-        "tss_base_url": FAKE_SERVER,
-    }
-
-
-@responses.activate
-def test_backend_password_not_in_output():
+@patch("credential_plugins.delinea_secret_server.PasswordGrantAuthorizer")
+def test_backend_password_not_in_output(mock_cls):
     """The raw password must NEVER appear in the plugin output."""
-    responses.add(
-        responses.POST,
-        FAKE_SERVER + TOKEN_ENDPOINT,
-        json={"access_token": FAKE_TOKEN},
-        status=200,
+    mock_cls.return_value = MagicMock(token=FAKE_TOKEN)
+
+    token_result = backend(
+        base_url=FAKE_SERVER,
+        username="appuser",
+        password="s3cret",
+        identifier="token",
+    )
+    url_result = backend(
+        base_url=FAKE_SERVER,
+        username="appuser",
+        password="s3cret",
+        identifier="base_url",
     )
 
-    result = backend(
-        {
-            "base_url": FAKE_SERVER,
-            "username": "appuser",
-            "password": "s3cret",
-        }
-    )
-
-    output_str = json.dumps(result)
-    assert "s3cret" not in output_str
+    assert "s3cret" not in token_result
+    assert "s3cret" not in url_result
 
 
-def test_injectors_define_env_and_extra_vars():
-    """INJECTORS must expose tss_token and tss_base_url as env vars and extra vars."""
-    assert "env" in INJECTORS
-    assert "extra_vars" in INJECTORS
-    assert "TSS_TOKEN" in INJECTORS["env"]
-    assert "TSS_BASE_URL" in INJECTORS["env"]
-    assert "tss_token" in INJECTORS["extra_vars"]
-    assert "tss_base_url" in INJECTORS["extra_vars"]
+@patch("credential_plugins.delinea_secret_server.PasswordGrantAuthorizer")
+def test_backend_sdk_error_propagates(mock_cls):
+    """SDK authentication errors propagate to AWX."""
+    mock_cls.side_effect = Exception("Authentication failed")
+
+    with pytest.raises(Exception, match="Authentication failed"):
+        backend(
+            base_url=FAKE_SERVER,
+            username="wrong",
+            password="wrong",
+            identifier="token",
+        )
 
 
-def test_credential_plugin_has_injectors():
-    """The CredentialPlugin namedtuple must include injectors for AWX registration."""
-    assert hasattr(delinea_secret_server, "injectors")
-    assert delinea_secret_server.injectors is not None
-    assert delinea_secret_server.injectors == INJECTORS
+# ── INPUTS schema tests ─────────────────────────────────────────────────
 
 
-def test_injectors_never_reference_password():
-    """The raw password must never appear in injector definitions."""
-    injector_str = json.dumps(INJECTORS)
-    assert "password" not in injector_str
+def test_inputs_has_required_fields():
+    """INPUTS must declare the expected authentication fields."""
+    field_ids = {f["id"] for f in INPUTS["fields"]}
+    assert {"base_url", "username", "password", "domain"} == field_ids
 
 
-def test_inputs_metadata_matches_backend_keys():
-    """INPUTS metadata IDs must match the keys returned by backend()."""
+def test_inputs_password_is_secret():
+    """The password field must be marked as secret."""
+    pw_field = next(f for f in INPUTS["fields"] if f["id"] == "password")
+    assert pw_field.get("secret") is True
+
+
+def test_inputs_metadata_has_identifier():
+    """INPUTS metadata must include an 'identifier' field."""
     metadata = INPUTS.get("metadata")
     assert metadata is not None, "INPUTS must include a 'metadata' array"
     metadata_ids = {m["id"] for m in metadata}
-    assert "tss_token" in metadata_ids
-    assert "tss_base_url" in metadata_ids
+    assert "identifier" in metadata_ids
+
+
+def test_inputs_identifier_has_choices():
+    """The identifier metadata field must have choices (not free-text)."""
+    identifier = next(m for m in INPUTS["metadata"] if m["id"] == "identifier")
+    assert "choices" in identifier
+    assert "token" in identifier["choices"]
+    assert "base_url" in identifier["choices"]
+
+
+def test_inputs_identifier_has_default():
+    """The identifier metadata field must default to 'token'."""
+    identifier = next(m for m in INPUTS["metadata"] if m["id"] == "identifier")
+    assert identifier.get("default") == "token"
+
+
+def test_inputs_required_includes_identifier():
+    """The identifier metadata field must be listed as required."""
+    assert "identifier" in INPUTS["required"]
+
+
+# ── CredentialPlugin namedtuple tests ────────────────────────────────────
+
+
+def test_credential_plugin_structure():
+    """The CredentialPlugin namedtuple has exactly three fields: name, inputs, backend."""
+    assert hasattr(delinea_secret_server, "name")
+    assert hasattr(delinea_secret_server, "inputs")
+    assert hasattr(delinea_secret_server, "backend")
+    assert len(delinea_secret_server) == 3
+
+
+def test_credential_plugin_no_injectors():
+    """AWX credential plugins do NOT include injectors (AWX handles injection)."""
+    assert not hasattr(delinea_secret_server, "injectors")
+
+
+def test_credential_plugin_name():
+    """The plugin name matches what AWX displays in the UI."""
+    assert delinea_secret_server.name == "Delinea Secret Server"
+
+
+def test_credential_plugin_inputs_is_inputs():
+    """The plugin inputs reference the module-level INPUTS dict."""
+    assert delinea_secret_server.inputs is INPUTS
+
+
+def test_credential_plugin_backend_is_callable():
+    """The plugin backend is the module-level backend function."""
+    assert delinea_secret_server.backend is backend
+    assert callable(delinea_secret_server.backend)

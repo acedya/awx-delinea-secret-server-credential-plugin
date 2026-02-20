@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is an **AWX/AAP managed credential plugin** for Delinea (Thycotic) Secret Server, packaged as a Python pip-installable library. It authenticates via OAuth2 at Ansible job launch time and injects a short-lived access token — never the raw password.
+This is an **AWX/AAP external credential plugin** for Delinea (Thycotic) Secret Server, packaged as a Python pip-installable library. It authenticates via OAuth2 at Ansible job launch time and returns a short-lived access token through AWX credential linking — never the raw password.
 
 - **Package name**: `awx-delinea-secret-server-credential-plugin`
 - **Entry point**: `awx.credential_plugins` → `credential_plugins:delinea_secret_server`
@@ -12,17 +12,18 @@ This is an **AWX/AAP managed credential plugin** for Delinea (Thycotic) Secret S
 ## Architecture
 
 The plugin is a single Python module (`credential_plugins/delinea_secret_server.py`) that:
-1. Receives credential fields from AWX (base_url, username, password, domain)
-2. POSTs to `{base_url}/oauth2/token` to get an OAuth2 access token
-3. Returns `tss_token` and `tss_base_url` which AWX injects as env vars and extra vars
-4. The raw password is **never** returned or injected
+1. Receives credential fields + metadata from AWX as **kwargs (base_url, username, password, domain, identifier)
+2. Uses the Delinea Python SDK (`python-tss-sdk`) to authenticate via OAuth2
+3. Returns a **single string** based on the `identifier` metadata dropdown (`token` or `base_url`)
+4. The raw password is **never** returned
+
+This plugin is an **external credential source** — it does NOT include injectors. To inject values into jobs, users create a separate target credential type with injectors and link its fields to this plugin.
 
 Key objects:
-- `INPUTS` dict: defines the AWX credential input form schema
-- `INJECTORS` dict: defines what gets injected into the job runtime (env vars + extra vars)
-- `CredentialPlugin` namedtuple: the entry point AWX discovers (name, inputs, injectors, backend)
-- `_get_access_token()`: internal function handling the OAuth2 POST
-- `backend()`: entry point called by AWX at job launch
+- `INPUTS` dict: defines the AWX credential input form schema (`fields` for auth, `metadata` for per-link dropdown)
+- `CredentialPlugin` namedtuple: the entry point AWX discovers — exactly 3 fields: `name`, `inputs`, `backend`
+- `_get_authorizer()`: creates a `PasswordGrantAuthorizer` or `DomainPasswordGrantAuthorizer` from the SDK
+- `backend(**kwargs)`: entry point called by AWX at job launch, returns a single string value
 
 ## Code Style & Conventions
 
@@ -38,14 +39,14 @@ Key objects:
 ## Testing
 
 - Framework: `pytest` with `pytest-cov`
-- HTTP mocking: `responses` library (never make real HTTP calls in tests)
+- SDK mocking: `unittest.mock` (never make real HTTP calls in tests)
 - Test file: `tests/test_delinea_credential_plugin.py`
 - Coverage target: 97%+
 - All tests must pass: `make test-ci`
 - Security invariant: **raw password must never appear in plugin output** — always write a test for this
 
 When writing new tests:
-- Mock all HTTP calls with `@responses.activate`
+- Mock SDK classes with `unittest.mock.patch`
 - Test both success and error paths
 - Verify that sensitive data (passwords) is never leaked in return values
 - Use descriptive test names: `test_<function>_<scenario>`
@@ -64,7 +65,6 @@ When writing new tests:
 - `credential_plugins/` — plugin source (keep flat, single module)
 - `tests/` — unit tests
 - `scripts/` — release automation helpers
-- `credential_type/` — YAML reference files (not used at runtime)
 - `examples/` — sample Ansible playbooks
 
 ## Branching Model
@@ -87,8 +87,8 @@ This project follows **GitHub Flow** (https://docs.github.com/en/get-started/usi
 
 ## Important Constraints
 
-- This plugin runs inside AWX/AAP Python environments — keep dependencies minimal (`requests` only)
+- This plugin runs inside AWX/AAP Python environments — keep dependencies minimal (`python-tss-sdk` only)
 - Do not add heavy frameworks or unnecessary dependencies
 - The `CredentialPlugin` namedtuple interface is defined by AWX — do not change its structure
-- `inputs` and `injectors` dict shapes are AWX API contracts
+- `inputs` dict shape is an AWX API contract
 - Maintain backward compatibility with Python 3.8
