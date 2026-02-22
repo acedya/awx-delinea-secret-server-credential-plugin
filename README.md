@@ -259,8 +259,8 @@ Create a trusted publisher configuration on [pypi.org](https://pypi.org):
 
 | Setting | Value |
 |---------|-------|
-| Owner | Your GitHub org/user |
-| Repository | `tss-credential-plugin` |
+| Owner | Kevin Marquis |
+| Repository | `awx-delinea-secret-server-credential-plugin` |
 | Workflow | `release.yml` |
 | Environment | `pypi` |
 
