@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "awx-delinea-secret-server-credential-plugin"
-version = "0.2.5"
+version = "0.2.6"
 description = "AWX/AAP credential plugin for Delinea (Thycotic) Secret Server"
 readme = "README.md"
 license = "Apache-2.0"
@@ -16,6 +16,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
     "Intended Audience :: System Administrators",
@@ -23,7 +24,7 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "python-tss-sdk>=1.2.2",
+    "python-tss-sdk>=1.2.3",
 ]
 
 [project.urls]
@@ -49,7 +50,7 @@ packages = ["credential_plugins"]
 
 [tool.black]
 line-length = 100
-target-version = ["py38", "py39", "py310", "py311"]
+target-version = ["py38", "py39", "py310", "py311", "py312"]
 
 [tool.isort]
 profile = "black"
