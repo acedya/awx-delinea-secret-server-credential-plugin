@@ -505,7 +505,7 @@ At launch, AWX will:
 
 ## Repository Hardening
 
-Apply these in GitHub UI: **Settings → Rules → Rulesets**.
+Apply these in GitHub UI: **Settings → Rules → Rulesets**. 
 
 ### Branch Protection
 
